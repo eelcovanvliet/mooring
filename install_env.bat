@@ -5,6 +5,7 @@ REM =======================================
 echo # requirements > requirements.txt
 echo hivemind @ git+https://github.com/eelcovanvliet/hivemind.git@master >> requirements.txt
 echo OrcFxAPI >> requirements.txt
+echo scipy >> requirements.txt
 
 
 REM inplace environment creation

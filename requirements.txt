@@ -1,3 +1,4 @@
 # requirements 
 hivemind @ git+https://github.com/eelcovanvliet/hivemind.git@master 
 OrcFxAPI 
+scipy 
