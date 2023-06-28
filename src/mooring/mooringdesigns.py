@@ -1,6 +1,6 @@
-from tlp.abstracts import Parameter
-from tlp.designs import InstallationDesign, ureg
+
 import numpy as np
+from carg_io.abstracts import ParameterSet, Parameter, ureg
 
 # ureg = UnitRegistry()
 # m = ureg.meter
@@ -14,7 +14,7 @@ import numpy as np
 # dimensionless = ureg.dimensionless
 
 
-class Taut(InstallationDesign):
+class Taut(ParameterSet):
     NumberOfLines:Parameter = 3*ureg.dimensionless
     Diameter:Parameter = 254 * ureg.mm
     MassPerUnitLength:Parameter = 45 * ureg.kg / ureg.m
@@ -22,14 +22,14 @@ class Taut(InstallationDesign):
     RadiusAnchorPointWrtColumnAxis:Parameter = 430 * ureg.m
     PreTension:Parameter = 250 * ureg.MPa
 
-class SemiTaut(InstallationDesign):
+class SemiTaut(ParameterSet):
     NumberOfLines:Parameter = 3*ureg.dimensionless
     RadiusAnchorPointWrtColumnAxis:Parameter = 790 * ureg.m
     MassPerUnitLength:Parameter = np.array([128, 473]) * ureg.kg / ureg.m
     E:Parameter = np.array([210, 210]) * ureg.GPa # Youngs Modulus Steel
     Diameter:Parameter = np.array([165, 147]) * ureg.mm
 
-class Catenary(InstallationDesign):
+class CatenaryParameters(ParameterSet):
     NumberOfLines: Parameter = 3 * ureg.dimensionless
     RadiusAnchorPointWrtColumnAxis:Parameter = 790 * ureg.m
     MassPerUnitLength:Parameter = 473 * ureg.kg / ureg.m
