@@ -7,6 +7,7 @@ echo hivemind @ git+https://github.com/eelcovanvliet/hivemind.git@master >> requ
 echo OrcFxAPI >> requirements.txt
 echo scipy >> requirements.txt
 echo pytest >> requirements.txt
+echo -e . >> requirements.txt
 
 
 REM inplace environment creation
