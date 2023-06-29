@@ -7,7 +7,7 @@ from .mooringdesigns import CatenaryParameters
 from hivemind.abstracts import Base, State
 from hivemind.site import Site
 from typing import List, Dict, Tuple
-
+from pathlib import Path
 
 # class Mooring(ABC):
 
@@ -74,8 +74,8 @@ class MooringCatenary(Base):
     def previous_state(self) -> CatenaryState|None:
         raise NotImplementedError()
 
-    def create_in_ofx(self, model):
-        self.state.create_in_ofx(model)
+    def create_in_ofx(self, model, *args, **kwrags):
+        self.state.create_in_ofx(model, *args, **kwrags)
 
 
 class CatenaryState(State):
@@ -83,17 +83,20 @@ class CatenaryState(State):
 
 class CatenaryInSitu(CatenaryState):
 
-    def create_ofx(self, model:OrcFxAPI.Model, connection_points, anchor_points):
+    def create_in_ofx(self, model:OrcFxAPI.Model, connection_points, anchor_points) -> OrcFxAPI.Model:
         # create line type of chain first:
         chain_type = model.CreateObject(OrcFxAPI.ObjectType.LineType, 'CatenaryChain')
-        chain_type.OD, chain_type.ID = self.installation.Diameter['m'], 0
+        chain_type.OD, chain_type.ID = self.base.parameters.Diameter['m'], 0
+        
         A = np.pi/4*chain_type.OD**2
-        chain_type.EA = self.installation.E['kPa']*A
+        chain_type.EA = self.base.parameters.E['kPa']*A
         chain_type.EIx = 0.001
         chain_type.Cdx = 2.0
-        chain_type.MassPerUnitLength = self.installation.MassPerUnitLength['t/m']
+        chain_type.MassPerUnitLength = self.base.parameters.MassPerUnitLength['t/m']
 
-        water_depth = self.site.WaterDepth['m']
+        # water_depth = self.site.water_depth['m']
+        water_depth = model.environment.WaterDepth
+
 
 
         
@@ -131,26 +134,26 @@ class CatenaryInSitu(CatenaryState):
             diff = begin-end
 
 
-            length, Fv = self.calc_length(draft=draft, hf=(ax**2+ay**2)**0.5)
+            length, Fv = self.calc_length(draft=draft, hf=(ax**2+ay**2)**0.5, water_depth=water_depth)
             line.Length[0] = length
         return model
 
-    def calc_length(self, draft, hf):
+    def calc_length(self, draft, hf, water_depth):
 
         def length_equation(variables):
-            OD = self.installation.Diameter['m']
+            OD = self.base.parameters.Diameter['m']
             A = np.pi / 4 * OD ** 2
 
-            subm_force_ul = self.installation.MassPerUnitLength['kg/m'] - A * 1.025
-            EA = self.installation.E['kPa'] * A
-            Fh = self.installation.MooringHorizontaLForceAtFloater['kN']
+            subm_force_ul = self.base.parameters.MassPerUnitLength['kg/m'] - A * 1.025
+            EA = self.base.parameters.E['kPa'] * A
+            Fh = self.base.parameters.MooringHorizontaLForceAtFloater['kN']
 
             length, Fv = variables
 
             eq1 = length - Fv / subm_force_ul + Fh / EA * length + Fh / subm_force_ul * np.arcsinh(Fv / Fh) - hf
-            eq2 = 1 / subm_force_ul *((Fh ** 2 + Fv ** 2) ** 0.5 - Fh + Fv ** 2 / (2* EA)) - (self.site.WaterDepth['m'] - draft)
+            eq2 = 1 / subm_force_ul *((Fh ** 2 + Fv ** 2) ** 0.5 - Fh + Fv ** 2 / (2* EA)) - (water_depth - draft)
             return [eq1, eq2]
 
-        solution = fsolve(func = length_equation, x0= [self.site.WaterDepth['m'], self.site.WaterDepth['m']*self.installation.MassPerUnitLength['kg/m']])
+        solution = fsolve(func = length_equation, x0= [water_depth, water_depth*self.base.parameters.MassPerUnitLength['kg/m']])
         length, Fv = solution
         return length, Fv
