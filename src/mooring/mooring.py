@@ -126,6 +126,7 @@ class CatenaryInSitu(CatenaryState):
             line.EndBHeightAboveSeabed = 0
             line.TargetSegmentLength[0] = 5.0 # target at 5 meter length
 
+            line.LayAzimuth = (angle + 180) % 360
             # line.StaticsSeabedFrictionPolicy = 'None'
 
             begin = np.array([x,y,draft])
