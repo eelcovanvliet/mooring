@@ -4,6 +4,12 @@ from mooring.mooring import MooringCatenary
 from mooring.mooringdesigns import CatenaryParameters
 from hivemind.site import Site, SiteParameters
 import OrcFxAPI
+import subprocess
+from pathlib import Path
+import os
+
+TEMP = Path(__file__).parent / 'temp'
+TEMP.mkdir(exist_ok=True)
 
 def test_mooring():
     parameters = CatenaryParameters()
@@ -14,7 +20,7 @@ def test_mooring():
     model = OrcFxAPI.Model()
     _ = model.CreateObject(OrcFxAPI.otVesselType)
     _ = model.CreateObject(OrcFxAPI.otVessel)
-    model.SaveData('test_mooring.dat')
+    model.SaveData(str(TEMP / 'test_mooring.dat'))
 
     
     anchor_point_radius = 300
@@ -25,11 +31,14 @@ def test_mooring():
         [180,-anchor_point_radius,0], 
         [270,0,-anchor_point_radius],
         ]
-    cat.create_in_ofx(model, connection_points, anchor_points)
 
-    model.SaveData('test_mooring.dat')
+    cat.create_in_ofx(model, connection_points, anchor_points)
+    model.SaveData(str(TEMP / 'test_mooring.dat'))
+    
 
     model.CalculateStatics()
+    model.SaveData(str(TEMP / 'test_mooring.dat'))
+
     line = model['Line1']
     GX_force = line.StaticResult('End GX force', OrcFxAPI.oeEndA) # kN
     assert GX_force == 25e3
