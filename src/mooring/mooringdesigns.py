@@ -31,8 +31,15 @@ class SemiTaut(ParameterSet):
 
 class CatenaryParameters(ParameterSet):
     NumberOfLines: Parameter = 3 * ureg.dimensionless
-    RadiusAnchorPointWrtColumnAxis:Parameter = 790 * ureg.m
-    MassPerUnitLength:Parameter = 473 * ureg.kg / ureg.m
-    E:Parameter = 210 * ureg.GPa # Youngs Modulus Steel
-    Diameter:Parameter = 165 * ureg.mm
+    # RadiusAnchorPointWrtColumnAxis:Parameter = 790 * ureg.m
+    MassPerUnitLength:Parameter = 113.35 * ureg.kg / ureg.m
+    EA:Parameter = 753.6 * ureg.MN # Axial Stiffness of Chain
+    Diameter:Parameter = 76.6 * ureg.mm
     MooringHorizontaLForceAtFloater:Parameter = 2000 * ureg.kN
+
+class PolyCatenar(ParameterSet):
+    NumberOfLines:Parameter = 3*ureg.dimensionless
+    RadiusAnchorPointWrtColumnAxis:Parameter = 790 * ureg.m
+    MassPerUnitLength:Parameter = np.array([128, 473]) * ureg.kg / ureg.m
+    E:Parameter = np.array([210, 210]) * ureg.GPa # Youngs Modulus Steel
+    Diameter:Parameter = np.array([165, 147]) * ureg.mm

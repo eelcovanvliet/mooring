@@ -1,5 +1,6 @@
 from __future__ import annotations
 import OrcFxAPI
+from moorpy.Catenary import catenary
 from abc import ABC, abstractmethod
 import numpy as np
 from scipy.optimize import fsolve
@@ -77,7 +78,16 @@ class MooringCatenary(Base):
     def create_in_ofx(self, model, *args, **kwrags):
         self.state.create_in_ofx(model, *args, **kwrags)
 
-
+    @staticmethod
+    def distribute_connection_points(x, y, z, angles:list) -> list:
+        anchor_points = []
+        for a in angles:
+            angle_rad = np.deg2rad(a)
+            anchor_points.append([a,
+                                  (x*np.cos(angle_rad)-y*np.sin(angle_rad)),
+                                  (x*np.sin(angle_rad)+y*np.cos(angle_rad)),
+                                  z])
+        return anchor_points
 class CatenaryState(State):
     pass
 
@@ -89,7 +99,7 @@ class CatenaryInSitu(CatenaryState):
         chain_type.OD, chain_type.ID = self.base.parameters.Diameter['m'], 0
         
         A = np.pi/4*chain_type.OD**2
-        chain_type.EA = self.base.parameters.E['kPa']*A
+        chain_type.EA = self.base.parameters.EA['kN']
         chain_type.EIx = 0.001
         chain_type.Cdx = 2.0
         chain_type.MassPerUnitLength = self.base.parameters.MassPerUnitLength['t/m']
@@ -111,14 +121,14 @@ class CatenaryInSitu(CatenaryState):
         draft = vessel.InitialZ
 
 
-        for (angle, x, y), (_, ax, ay) in zip(connection_points, anchor_points):
+        for (angle, x, y, z), (_, ax, ay, az) in zip(connection_points, anchor_points):
             line = model.CreateObject(OrcFxAPI.ObjectType.Line)
             line.EndAConnection = vessel.name
 
             line.EndAyBendingStiffness = 0.0
             line.EndAX = x
             line.EndAY = y
-            line.EndAZ = 0
+            line.EndAZ = z
 
             line.EndBConnection = "Anchored"
             line.EndBX = ax
@@ -135,26 +145,108 @@ class CatenaryInSitu(CatenaryState):
             diff = begin-end
 
 
-            length, Fv = self.calc_length(draft=draft, hf=(ax**2+ay**2)**0.5, water_depth=water_depth)
+            length, Fv = self.calc_length_Jonkman(anchor_z=z, hf=((ax-x)**2+(ay-y)**2)**0.5, water_depth=water_depth)
+            # length, _, _, _, _, _ = self.calc_length_moorpy(anchor_z=z, hf=((ax-x)**2+(ay-y)**2)**0.5, water_depth=water_depth)
+            print("Length = ", length)
             line.Length[0] = length
         return model
 
-    def calc_length(self, draft, hf, water_depth):
+    def calc_length(self, anchor_z, hf, water_depth):
 
         def length_equation(variables):
             OD = self.base.parameters.Diameter['m']
             A = np.pi / 4 * OD ** 2
 
-            subm_force_ul = self.base.parameters.MassPerUnitLength['kg/m'] - A * 1.025
-            EA = self.base.parameters.E['kPa'] * A
-            Fh = self.base.parameters.MooringHorizontaLForceAtFloater['kN']
+            subm_force_ul = (self.base.parameters.MassPerUnitLength['kg/m'] - A * 1.025)*9.81
+            EA = self.base.parameters.EA['N']
+            Fh = self.base.parameters.MooringHorizontaLForceAtFloater['N']
 
             length, Fv = variables
 
             eq1 = length - Fv / subm_force_ul + Fh / EA * length + Fh / subm_force_ul * np.arcsinh(Fv / Fh) - hf
-            eq2 = 1 / subm_force_ul *((Fh ** 2 + Fv ** 2) ** 0.5 - Fh + Fv ** 2 / (2* EA)) - (water_depth - draft)
+            eq2 = 1 / subm_force_ul *((Fh ** 2 + Fv ** 2) ** 0.5 - Fh + Fv ** 2 / (2* EA)) - (water_depth + anchor_z)
+
             return [eq1, eq2]
 
-        solution = fsolve(func = length_equation, x0= [water_depth, water_depth*self.base.parameters.MassPerUnitLength['kg/m']])
+        solution = fsolve(func = length_equation, x0= [hf, water_depth*self.base.parameters.MassPerUnitLength['kg/m']*9.81])
+        length, Fv = solution
+        return length, Fv
+
+    def calc_length_moorpy(self, anchor_z, hf, water_depth) -> float:
+        OD = self.base.parameters.Diameter['m']
+        A = np.pi / 4 * OD ** 2
+
+        subm_force_ul = (self.base.parameters.MassPerUnitLength['kg/m'] - A * 1.025) * 9.81
+        EA = self.base.parameters.EA['N']
+        Fh = - self.base.parameters.MooringHorizontaLForceAtFloater['N']
+
+        # Define the bounds for the length L
+        L_lower = (hf**2+water_depth**2)**0.5
+        L_upper = hf+water_depth  # Adjust the upper bound as per your requirements
+
+        # Perform bisection until the desired tolerance is reached or maximum iterations are exceeded
+        Tol = 10
+        MaxIter = 100
+        for _ in range(MaxIter):
+            L = (L_lower + L_upper) / 2.0
+
+            # Call the catenary function with the current length L
+            FxA, FzA, FxB_, FzB, info = catenary(XF = hf, ZF = water_depth+anchor_z, L = L, EA =EA, W=subm_force_ul, CB=0, HF0=-Fh, VF0=0)
+
+            # print(FxB_)
+            # Check if the obtained FxB value matches the desired value within the tolerance
+            if abs(FxB_ - Fh) < Tol:
+                return L, FxA, FzA, FxB_, FzB, info
+
+            # Update the bounds based on the obtained FxB value
+            if FxB_ < Fh:
+                L_lower = L
+            else:
+                L_upper = L
+
+        # Return the best approximation found within the maximum iterations
+        return L, FxA, FzA, FxB_, FzB, info
+
+    def calc_length_Jonkman(self, anchor_z, hf, water_depth):
+
+        def length_equation(variables):
+            OD = self.base.parameters.Diameter['m']
+            A = np.pi / 4 * OD ** 2
+
+            subm_force_ul = (self.base.parameters.MassPerUnitLength['kg/m'] - A * 1.025)*9.81
+            EA = self.base.parameters.EA['N']
+            Fh = self.base.parameters.MooringHorizontaLForceAtFloater['N']
+
+            length, Fv = variables
+
+            eq1 = length - Fv / subm_force_ul + Fh / EA * length + Fh / subm_force_ul * np.arcsinh(Fv / Fh) - hf
+            eq2 = Fh / subm_force_ul *( (1+(Fv/Fh) ** 2) ** 0.5 - 1) + Fv**2/(2* EA*subm_force_ul) - (water_depth + anchor_z)
+
+            return [eq1, eq2]
+
+        solution = fsolve(func = length_equation, x0= [hf, water_depth*self.base.parameters.MassPerUnitLength['kg/m']*9.81])
+        length, Fv = solution
+        return length, Fv
+
+    def calc_length_Jiang(self, anchor_z, hf, water_depth):
+
+        def length_equation(variables):
+            OD = self.base.parameters.Diameter['m']
+            A = np.pi / 4 * OD ** 2
+
+            subm_force_ul = (self.base.parameters.MassPerUnitLength['kg/m'] - A * 1.025)*9.81
+            EA = self.base.parameters.EA['N']
+            Fh = self.base.parameters.MooringHorizontaLForceAtFloater['N']
+
+            length, Fv = variables
+
+            subm_force_ul= subm_force_ul*length
+
+            eq1 = Fh*length/EA + Fh*length / subm_force_ul*(np.arcsinh(Fv / Fh)-np.arcsinh(Fv-subm_force_ul / Fh)) - hf
+            eq2 = subm_force_ul*length/EA*(Fv/subm_force_ul-0.5) + Fh*length/subm_force_ul* ((1+(Fv/Fh) ** 2) ** 0.5 - (1+((Fv-subm_force_ul)/Fh) ** 2)** 0.5) - (water_depth + anchor_z)
+
+            return [eq1, eq2]
+
+        solution = fsolve(func = length_equation, x0= [hf, water_depth*self.base.parameters.MassPerUnitLength['kg/m']*9.81])
         length, Fv = solution
         return length, Fv
